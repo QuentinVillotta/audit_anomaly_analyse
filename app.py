@@ -35,7 +35,8 @@ st.write(uploaded_file)
 if uploaded_file is not None:
     # Load data
     st.write("on est entr")
-    df = dl.data_loader(uploaded_file)
+    # df = dl.data_loader(uploaded_file)
+    df = pd.read_excel(uploaded_file)
     print(df)
     st.write("on est apres le chargement des data")
     st.write(df)
