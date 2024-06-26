@@ -37,7 +37,8 @@ if uploaded_file is not None:
     st.write("on est entr")
     df = dl.data_loader(uploaded_file)
     print(df)
-    
+    st.write("on est apres le chargement des data")
+    st.write(df)
     if df is not None:
         # Sidebar for column selection
         columns_to_remove = st.sidebar.multiselect("**Select columns to remove from analysis:**", df.columns)
