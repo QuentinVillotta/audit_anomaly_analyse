@@ -16,16 +16,13 @@ def data_loader(uploaded_file):
         # Check file extension to determine the appropriate loader
         _, file_extension = os.path.splitext(uploaded_file.name)
 
-        st.caption(file_extension)
         if file_extension.lower() == '.csv':
             # Load data from CSV
-            data = pd.read_csv(uploaded_file)
+            data = pd.read_csv(uploaded_file, index_col=None)
             return data
         elif file_extension.lower() in ['.xls', '.xlsx']:
-            st.caption("est ce qu'on rentre la")
             # Load data from Excel
-            data = pd.read_excel(uploaded_file)
-            st.write(data)
+            data = pd.read_excel(uploaded_file, index_col=None)
             return data
         elif file_extension.lower() in ['.pq', '.parquet']:
             # Load data from Parquet
@@ -36,6 +33,5 @@ def data_loader(uploaded_file):
             return None
 
     except Exception as e:
-        st.caption("Error loading data")
         print(f"Error loading data: {e}")
         return None

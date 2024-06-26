@@ -29,17 +29,9 @@ tab1, tab2, tab3 = st.tabs(["Describe", "Univariate Analysis", "Multivariate Ana
 
 uploaded_file = st.sidebar.file_uploader("**Choose a file:**", type=ALLOWED_FILE_FORMATS, label_visibility="visible")
 
-print(uploaded_file)
-st.write(uploaded_file)
-
 if uploaded_file is not None:
     # Load data
-    st.write("on est entr")
-    # df = dl.data_loader(uploaded_file)
-    df = pd.read_excel(uploaded_file)
-    print(df)
-    st.write("on est apres le chargement des data")
-    st.write(df)
+    df = dl.data_loader(uploaded_file)
     if df is not None:
         # Sidebar for column selection
         columns_to_remove = st.sidebar.multiselect("**Select columns to remove from analysis:**", df.columns)
