@@ -1,7 +1,3 @@
-#[theme]
-# should look like a light theme
-#primaryColor  = '#f43365'
-#backgroundColor = '#000000'
-#secondaryBackgroundColor = '#f1f3f6'
-#textColor = '#000000'
-#font = 'sans serif'
+[theme]
+base="light"
+primaryColor="#4b97ff"
