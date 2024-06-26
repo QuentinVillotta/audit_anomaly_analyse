@@ -29,6 +29,9 @@ tab1, tab2, tab3 = st.tabs(["Describe", "Univariate Analysis", "Multivariate Ana
 
 uploaded_file = st.sidebar.file_uploader("**Choose a file:**", type=ALLOWED_FILE_FORMATS, label_visibility="visible")
 
+print(uploaded_file)
+st.write(uploaded_file)
+
 if uploaded_file is not None:
     # Load data
     df = dl.data_loader(uploaded_file)
