@@ -3,3 +3,4 @@ streamlit
 seaborn
 matplotlib
 openpyxl
+scikit-learn
