@@ -17,7 +17,7 @@ pip install -r requirements.txt
 
 ## Web version
 
-[Link](https://impact-initiatives-interactive-data-explorer-app.streamlit.app/) to access the web app
+[Link](https://anomaly-detection-features-explorer.streamlit.app/) to access the web app
 
 ## Run localy
 

@@ -6,7 +6,7 @@ from itertools import combinations
 from sklearn.manifold import TSNE
 # Intern module
 from app_utils import data_loading as dl
-from app_utils import export_plot as ep
+from app_utils import plot_tools as pt
 
 def set_clicked():
     st.session_state.clicked = True
@@ -15,6 +15,8 @@ def set_clicked():
 ALLOWED_FILE_FORMATS=["csv", "xlsx", "xls", "pq", "parquet"]
 ALLOWED_IMAGE_FORMAT = ["png", "jpeg", "svg"]
 DEFAULT_ALLOWED_IMAGE_FORMAT = ALLOWED_IMAGE_FORMAT.index("png")
+THRESHOLD_QUANTITATIVE_TYPE = 20  
+
 
 st.set_page_config(
     page_title="Anomaly Detection Features - Data Explorer",
@@ -38,6 +40,8 @@ if uploaded_file is not None:
         columns_to_remove = st.sidebar.multiselect("**Select columns to remove from analysis:**", df.columns)
         # Remove selected columns
         df_filtered = df.drop(columns=columns_to_remove)
+        variable_types = dl.classify_variable_types(df_filtered, THRESHOLD_QUANTITATIVE_TYPE)
+
 
         # HUE Var
         HUE_VAR = st.sidebar.selectbox("**Select a variable for hue (color grouping):**", df_filtered.columns, index=None)
@@ -76,19 +80,29 @@ if uploaded_file is not None:
                         f, (ax_box, ax_hist) = plt.subplots(2, sharex=True, gridspec_kw={"height_ratios": (.15, .85)})
         
                         # assigning a graph to each ax
-                        g_bp = sns.boxplot(data = df_filtered, x = variable, hue=HUE_VAR,
-                                        orient="h", ax=ax_box, legend=False)
-                        g_hist = sns.histplot(data=df_filtered, x=variable, hue= HUE_VAR, 
-                                            stat="density",  element="step", common_norm=False, 
-                                                ax=ax_hist)
-                        # Remove x axis name for the boxplot
-                        ax_box.set(xlabel='')
-
+                        if variable_types[variable] == 'discrete':
+                            # Count plot
+                            g_bp = sns.boxplot(data = df_filtered, x = variable, hue=HUE_VAR,
+                            orient="h", ax=ax_box, legend=False)
+                            g_hist = sns.countplot(data=df_filtered, x=variable, hue= HUE_VAR, 
+                                                  ax=ax_hist)
+                            # Remove x axis name for the boxplot
+                            ax_box.set(xlabel='')
+                        else:
+                            # Histogram
+                            g_bp = sns.boxplot(data = df_filtered, x = variable, hue=HUE_VAR,
+                            orient="h", ax=ax_box, legend=False)
+                            g_hist = sns.histplot(data=df_filtered, x=variable, hue= HUE_VAR, 
+                                                  stat="density",  element="step", common_norm=False, 
+                                                  ax=ax_hist)
+                            # Remove x axis name for the boxplot
+                            ax_box.set(xlabel='')
+         
                         # g_univar.tick_params(axis='x', rotation=90)
                         # univar_figure = g_univar.get_figure()
                     
                         # Save plot memory
-                        buf = ep.save_plot_as_png(f, format=IMAGE_FORMAT, dpi=1000)
+                        buf = pt.save_plot_as_png(f, format=IMAGE_FORMAT, dpi=1000)
             
             with tab2_col2:
                 if variable is not None:
@@ -123,28 +137,38 @@ if uploaded_file is not None:
                     g1.plot_marginals(sns.boxplot)
                     st.pyplot(g1)
                     
-                    # Cat plot
-                    st.subheader(f"Catplot of variables")
+             
                     #  Bivariate plot
-                    g2 = sns.catplot(data=df_filtered, x=X, y =Y, hue=HUE_VAR, kind="bar")
+                    st.subheader(f"Catplot of variables")
+                    if variable_types[X] == 'discrete':
+                        # Cat plot
+                        g2 = sns.catplot(data=df_filtered, x=X, y =Y, hue=HUE_VAR, kind="bar",
+                                         estimator='mean', errorbar=('ci', 95))
+                    else:
+                        num_bins = pt.freedman_diaconis_rule(df_filtered[X])
+                        df_filtered['quantitative_var_binned'] = pd.cut(df_filtered[X], bins=num_bins)
+                        g2 = sns.catplot(data=df_filtered, x="quantitative_var_binned", y =Y, hue=HUE_VAR, kind="bar",
+                                         estimator='mean', errorbar=('ci', 95))
+                        g2.set(xlabel=X)
+                        g2.tick_params(axis='x', rotation=90)
                     
                     st.pyplot(g2)
                     # Dis plot by deleted reason (col)
-                    st.subheader(f"Disstplot of variables")
+                    st.subheader(f"Distplot of variables")
                     g3 = sns.displot(df_filtered, x=X, y=Y, col=HUE_VAR,
-                                    rug=True)
+                                     rug=True)
                     st.pyplot(g3)
                 
             with tab3_col2:
                 if X is not None and Y is not None:
                     # Placeholder for download button
-                    buf_g1= ep.save_plot_as_png(g1, format=IMAGE_FORMAT, dpi=1000)
+                    buf_g1= pt.save_plot_as_png(g1, format=IMAGE_FORMAT, dpi=1000)
                     st.download_button(label="Download KDE Plot", data=buf_g1, file_name="multivariate_kde_plot.{}".format(IMAGE_FORMAT), mime="image/{}".format(IMAGE_FORMAT))
                     # Placeholder for download button
-                    buf_g2= ep.save_plot_as_png(g2, format=IMAGE_FORMAT, dpi=1000)
+                    buf_g2= pt.save_plot_as_png(g2, format=IMAGE_FORMAT, dpi=1000)
                     st.download_button(label="Download Catplot", data=buf_g2, file_name="multivariate_catplot.{}".format(IMAGE_FORMAT), mime="image/{}".format(IMAGE_FORMAT))
                     # Placeholder for download button
-                    buf_g3= ep.save_plot_as_png(g2, format=IMAGE_FORMAT, dpi=1000)
+                    buf_g3= pt.save_plot_as_png(g3, format=IMAGE_FORMAT, dpi=1000)
                     st.download_button(label="Download Distlot", data=buf_g3, file_name="multivariate_distplot.{}".format(IMAGE_FORMAT), mime="image/{}".format(IMAGE_FORMAT))
 
 
@@ -192,5 +216,5 @@ if uploaded_file is not None:
             with tab4_col2:
                 if TSNE_TARGET_VAR is not None and TSNE_FEATURES:
                     # Placeholder for download button
-                    buf_TSNE= ep.save_plot_as_png(g_tsne.get_figure(), format=IMAGE_FORMAT, dpi=1000)
+                    buf_TSNE= pt.save_plot_as_png(g_tsne.get_figure(), format=IMAGE_FORMAT, dpi=1000)
                     st.download_button(label="Download TSNE Plot", data=buf_TSNE, file_name="TSNE_plot.{}".format(IMAGE_FORMAT), mime="image/{}".format(IMAGE_FORMAT))
