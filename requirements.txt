@@ -4,3 +4,9 @@ seaborn
 matplotlib
 openpyxl
 scikit-learn
+numpy
+tensorflow
+scikeras
+xgboost
+tensorflow
+scikeras

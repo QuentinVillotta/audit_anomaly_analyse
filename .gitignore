@@ -5,6 +5,10 @@
 debug.py
 main_test.sh
 
+# Ignore files in dev folder
+
+dev/*
+
 # ignore all local configuration
 conf/local/**
 !conf/local/.gitkeep
