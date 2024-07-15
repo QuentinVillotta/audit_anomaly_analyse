@@ -10,3 +10,4 @@ scikeras
 xgboost
 tensorflow
 scikeras
+keras
