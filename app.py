@@ -4,6 +4,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from itertools import combinations
 from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import LinearSVC, OneClassSVM
 from xgboost import XGBClassifier
@@ -26,6 +27,7 @@ DEFAULT_ALLOWED_IMAGE_FORMAT = ALLOWED_IMAGE_FORMAT.index("png")
 THRESHOLD_QUANTITATIVE_TYPE = 20  
 
 # Modelisation parameters
+
 models = {
     'KNN': (KNeighborsClassifier(), {'classifier__n_neighbors': [3, 5, 7, 9, 11], 'classifier__weights': ['uniform', 'distance'], 'classifier__metric': ['euclidean', 'manhattan']}),
     'Linear SVM': (LinearSVC(dual=False), {'classifier__C': [0.01, 0.1, 1, 10, 100], 'classifier__loss': ['hinge', 'squared_hinge']}),
@@ -33,11 +35,10 @@ models = {
     'Decision Tree': (DecisionTreeClassifier(), {'classifier__max_depth': [None, 10, 20, 30], 'classifier__min_samples_split': [2, 5, 10]}),
     'Random Forest': (RandomForestClassifier(), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_depth': [None, 10, 20], 'classifier__min_samples_split': [2, 5, 10]}),
     'Isolation Forest': (IsolationForest(contamination=0.1, random_state=42), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_samples': ['auto', 0.5, 0.75]}),
-    'One Class SVM': (OneClassSVM(nu=0.1, kernel='rbf'), {'classifier__gamma': ['scale', 'auto'], 'classifier__nu': [0.05, 0.1, 0.2]})
+    'One Class SVM': (OneClassSVM(nu=0.1, kernel='rbf'), {'classifier__gamma': ['scale', 'auto'], 'classifier__nu': [0.05, 0.1, 0.2]}),
 }
+
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
-
-
 
 st.set_page_config(
     page_title="Anomaly Detection Features - Data Explorer",
@@ -48,7 +49,7 @@ st.set_page_config(
 st.title("Anomaly Detection Features - Data Analysis")
 
 # Tabs for univariate and multivariate analysis
-tab1, tab2, tab3, tab4 = st.tabs(["Describe", "Univariate Analysis", "Multivariate Analysis", "Modelisation"])
+tab1, tab2, tab3, tab4, tab5 = st.tabs(["Describe", "Univariate Analysis", "Multivariate Analysis", "Modelisation", "TSNE"])
 
 
 uploaded_file = st.sidebar.file_uploader("**Choose a file:**", type=ALLOWED_FILE_FORMATS, label_visibility="visible")
@@ -89,13 +90,6 @@ if uploaded_file is not None:
 
                 # Plot
                 if variable is not None:
-                    # plot_univar = sns.histplot(data = df_filtered, x = variable, hue = HUE_VAR,
-                    #                            multiple="layer", stat="density", common_norm=False)
-                    # plot_univar.tick_params(axis='x', rotation=90)
-
-                    # g_univar = sns.JointGrid(data=df_filtered, x=variable, hue = HUE_VAR)
-                    # g_univar.plot_joint(sns.histplot, multiple="layer", stat="density", common_norm=False )
-                    # g_univar.plot_marginals(sns.boxplot)
 
                     with st.spinner('Wait for it...'):
                         f, (ax_box, ax_hist) = plt.subplots(2, sharex=True, gridspec_kw={"height_ratios": (.15, .85)})
@@ -118,9 +112,6 @@ if uploaded_file is not None:
                                                   ax=ax_hist)
                             # Remove x axis name for the boxplot
                             ax_box.set(xlabel='')
-         
-                        # g_univar.tick_params(axis='x', rotation=90)
-                        # univar_figure = g_univar.get_figure()
                     
                         # Save plot memory
                         buf = pt.save_plot_as_png(f, format=IMAGE_FORMAT, dpi=1000)
@@ -223,41 +214,40 @@ if uploaded_file is not None:
                         st.write(f"**{name}:**")
                         st.write(model)
 
-        # with tab5:
-        #     st.header("Dimension Reduction by TSNE",  divider='rainbow')
-        #     tab4_col1, tab4_col2 = st.columns([5, 1])
-        #     TSNE_TARGET_VAR = None
+        with tab5:
+            st.header("Dimension Reduction by TSNE",  divider='rainbow')
+            tab4_col1, tab4_col2 = st.columns([5, 1])
+            TSNE_TARGET_VAR = None
 
-        #     with tab4_col1:
-        #         TSNE_FEATURES = st.multiselect("**Select features you want to add in TSNE:**", df_filtered.columns)
-        #         if TSNE_FEATURES:
-        #             TSNE_TARGET_VAR = st.selectbox("**Select target variable:**", df_filtered.columns, index=None)
+            with tab4_col1:
+                TSNE_FEATURES = st.multiselect("**Select features you want to add in TSNE:**", df_filtered.columns)
+                if TSNE_FEATURES:
+                    TSNE_TARGET_VAR = st.selectbox("**Select target variable:**", df_filtered.columns, index=None)
              
-        #         if TSNE_TARGET_VAR is not None and TSNE_FEATURES:
-        #             # Séparer les caractéristiques et la variable cible
-        #             tsne_features_df = df_filtered[TSNE_FEATURES]
-        #             tsne_target_df = df[TSNE_TARGET_VAR]
+                if TSNE_TARGET_VAR is not None and TSNE_FEATURES:
+                    # Séparer les caractéristiques et la variable cible
+                    tsne_features_df = df_filtered[TSNE_FEATURES]
+                    tsne_target_df = df[TSNE_TARGET_VAR]
 
-        #             # Convertir les variables catégorielles en numériques
-        #             # features = pd.get_dummies(features)
+                    scaler = StandardScaler()
+                    X_scaled = scaler.fit_transform(tsne_features_df)
+                    # Appliquer t-SNE
+                    tsne = TSNE(n_components=2,
+                                perplexity=50, 
+                                random_state=0)
+                    tsne_result = tsne.fit_transform(X_scaled)
 
-        #             # Appliquer t-SNE
-        #             tsne = TSNE(n_components=2,
-        #                         perplexity=50, 
-        #                         random_state=0)
-        #             tsne_result = tsne.fit_transform(tsne_features_df)
+                    # Ajouter les résultats t-SNE au DataFrame
+                    df_tsne = pd.DataFrame(tsne_result, columns=['TSNE1', 'TSNE2'])
+                    df_tsne[TSNE_TARGET_VAR] = tsne_target_df
 
-        #             # Ajouter les résultats t-SNE au DataFrame
-        #             df_tsne = pd.DataFrame(tsne_result, columns=['TSNE1', 'TSNE2'])
-        #             df_tsne[TSNE_TARGET_VAR] = tsne_target_df
+                    # Visualiser les résultats t-SNE
+                    st.subheader('TSNE visualization of features colored by {}'.format(TSNE_TARGET_VAR))
+                    g_tsne = sns.scatterplot(x='TSNE1', y='TSNE2', hue=TSNE_TARGET_VAR, palette='viridis', data=df_tsne)
+                    st.pyplot(g_tsne.get_figure())
 
-        #             # Visualiser les résultats t-SNE
-        #             st.subheader('TSNE visualization of features colored by {}'.format(TSNE_TARGET_VAR))
-        #             g_tsne = sns.scatterplot(x='TSNE1', y='TSNE2', hue=TSNE_TARGET_VAR, palette='viridis', data=df_tsne)
-        #             st.pyplot(g_tsne.get_figure())
-
-        #     with tab4_col2:
-        #         if TSNE_TARGET_VAR is not None and TSNE_FEATURES:
-        #             # Placeholder for download button
-        #             buf_TSNE= pt.save_plot_as_png(g_tsne.get_figure(), format=IMAGE_FORMAT, dpi=1000)
-        #             st.download_button(label="Download TSNE Plot", data=buf_TSNE, file_name="TSNE_plot.{}".format(IMAGE_FORMAT), mime="image/{}".format(IMAGE_FORMAT))
+            with tab4_col2:
+                if TSNE_TARGET_VAR is not None and TSNE_FEATURES:
+                    # Placeholder for download button
+                    buf_TSNE= pt.save_plot_as_png(g_tsne.get_figure(), format=IMAGE_FORMAT, dpi=1000)
+                    st.download_button(label="Download TSNE Plot", data=buf_TSNE, file_name="TSNE_plot.{}".format(IMAGE_FORMAT), mime="image/{}".format(IMAGE_FORMAT))

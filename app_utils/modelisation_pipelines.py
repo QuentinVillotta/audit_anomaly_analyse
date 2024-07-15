@@ -30,6 +30,8 @@ def train_and_predict(X, Y, models, kf, tune_hyperparameters=False):
     best_models = {}
 
     for name, (model, params) in models.items():
+
+
         pipeline = Pipeline([
             ('scaler', StandardScaler()),
             ('classifier', model)
@@ -43,14 +45,6 @@ def train_and_predict(X, Y, models, kf, tune_hyperparameters=False):
             best_pipeline = pipeline
             best_pipeline.fit(X, Y)
         
-        # y_pred = cross_val_predict(best_pipeline, X, Y, cv=kf, method='predict')
-        
-        # if hasattr(best_pipeline.named_steps['classifier'], "decision_function"):
-        #     y_scores = cross_val_predict(best_pipeline, X, Y, cv=kf, method='decision_function')
-        # elif hasattr(best_pipeline.named_steps['classifier'], "predict_proba"):
-        #     y_scores = cross_val_predict(best_pipeline, X, Y, cv=kf, method='predict_proba')[:, 1]
-        # else:
-        #     y_scores = y_pred
         if name in ['Linear SVM']:
             y_scores = cross_val_predict(pipeline, X, Y, cv=kf, method='decision_function')
             y_pred = cross_val_predict(pipeline, X, Y, cv=kf, method='predict')
@@ -68,31 +62,31 @@ def train_and_predict(X, Y, models, kf, tune_hyperparameters=False):
         best_models[name] = best_pipeline
 
     # Autoencoder
-    # scaler_autoencoder = StandardScaler()
-    # X_scaled_autoencoder = scaler_autoencoder.fit_transform(X)
-    # input_dim = X_scaled_autoencoder.shape[1]
+    scaler_autoencoder = StandardScaler()
+    X_scaled_autoencoder = scaler_autoencoder.fit_transform(X)
+    input_dim = X_scaled_autoencoder.shape[1]
 
-    # autoencoder = KerasRegressor(model=create_dense_autoencoder, input_dim=input_dim, verbose=0)
-    # param_dist = {
-    #     'model__encoding_dim': [4, 8, 16, 32, 64],
-    #     'optimizer': ['adam', 'rmsprop'],
-    #     'epochs': [50, 100, 150],
-    #     'batch_size': [16, 32, 64]
-    # }
+    autoencoder = KerasRegressor(model=create_dense_autoencoder, input_dim=input_dim, verbose=0)
+    param_dist = {
+        'model__encoding_dim': [4, 8, 16, 32, 64],
+        'optimizer': ['adam', 'rmsprop'],
+        'epochs': [50, 100, 150],
+        'batch_size': [16, 32, 64]
+    }
 
-    # if tune_hyperparameters:
-    #     random_search = RandomizedSearchCV(autoencoder, param_distributions=param_dist, n_iter=10, cv=kf, scoring='neg_mean_squared_error', n_jobs=-1)
-    #     random_search.fit(X_scaled_autoencoder, X_scaled_autoencoder)
-    #     best_autoencoder = random_search.best_estimator_
-    # else:
-    #     best_autoencoder = autoencoder
-    #     best_autoencoder.fit(X_scaled_autoencoder, X_scaled_autoencoder)
+    if tune_hyperparameters:
+        random_search = RandomizedSearchCV(autoencoder, param_distributions=param_dist, n_iter=10, cv=kf, scoring='neg_mean_squared_error', n_jobs=-1)
+        random_search.fit(X_scaled_autoencoder, X_scaled_autoencoder)
+        best_autoencoder = random_search.best_estimator_
+    else:
+        best_autoencoder = autoencoder
+        best_autoencoder.fit(X_scaled_autoencoder, X_scaled_autoencoder)
     
-    # reconstructed = best_autoencoder.predict(X_scaled_autoencoder)
-    # reconstruction_errors = np.mean((X_scaled_autoencoder - reconstructed) ** 2, axis=1)
-    # threshold = np.percentile(reconstruction_errors, 95)
-    # y_pred_autoencoder = (reconstruction_errors > threshold).astype(int)
-    # predictions_dict['Autoencoder'] = (y_pred_autoencoder, reconstruction_errors)
+    reconstructed = best_autoencoder.predict(X_scaled_autoencoder)
+    reconstruction_errors = np.mean((X_scaled_autoencoder - reconstructed) ** 2, axis=1)
+    threshold = np.percentile(reconstruction_errors, 95)
+    y_pred_autoencoder = (reconstruction_errors > threshold).astype(int)
+    predictions_dict['Autoencoder'] = (y_pred_autoencoder, reconstruction_errors)
 
     return predictions_dict, best_models
 
@@ -169,50 +163,3 @@ def plot_tsne(X, Y, predictions_dict):
 
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     return fig
-
-# Application Streamlit
-# def main():
-#     st.title("Model Training and Visualization")
-
-#     # Load data
-#     PROJECT_SHORT = "MSNA_2023_SYR"
-#     df_export_path = f"data/05_model_input/{PROJECT_SHORT}/features_model.csv"
-#     df = pd.read_csv(df_export_path)
-#     X = df.drop(NON_FEATURES, axis=1)
-#     Y = df["anomaly_label"]
-
-#     # Model parameters
-#     models = {
-#         'KNN': (KNeighborsClassifier(), {'classifier__n_neighbors': [3, 5, 7, 9, 11], 'classifier__weights': ['uniform', 'distance'], 'classifier__metric': ['euclidean', 'manhattan']}),
-#         'Linear SVM': (LinearSVC(dual=False), {'classifier__C': [0.01, 0.1, 1, 10, 100], 'classifier__loss': ['hinge', 'squared_hinge']}),
-#         'XGBoost': (XGBClassifier(use_label_encoder=False, eval_metric='logloss'), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_depth': [3, 5, 7], 'classifier__learning_rate': [0, 0.01, 0.1, 0.2]}),
-#         'Decision Tree': (DecisionTreeClassifier(), {'classifier__max_depth': [None, 10, 20, 30], 'classifier__min_samples_split': [2, 5, 10]}),
-#         'Random Forest': (RandomForestClassifier(), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_depth': [None, 10, 20], 'classifier__min_samples_split': [2, 5, 10]}),
-#         'Isolation Forest': (IsolationForest(contamination=0.1, random_state=42), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_samples': ['auto', 0.5, 0.75]}),
-#         'One Class SVM': (OneClassSVM(nu=0.1, kernel='rbf'), {'classifier__gamma': ['scale', 'auto'], 'classifier__nu': [0.05, 0.1, 0.2]})
-#     }
-
-#     kf = KFold(n_splits=5, shuffle=True, random_state=42)
-
-#     st.sidebar.title("Settings")
-#     tune_hyperparameters = st.sidebar.checkbox("Tune Hyperparameters", value=True)
-
-#     if st.sidebar.button("Train Models"):
-#         st.write("Training models... This may take a few minutes.")
-#         predictions_dict, best_models = train_and_predict(X, Y, models, kf, tune_hyperparameters)
-
-#         st.write("### Model Evaluation Metrics")
-#         evaluation_fig = plot_evaluation_metrics(predictions_dict, Y)
-#         st.pyplot(evaluation_fig)
-
-#         st.write("### t-SNE Visualization")
-#         tsne_fig = plot_tsne(X, Y, predictions_dict)
-#         st.pyplot(tsne_fig)
-
-#         st.write("### Best Models")
-#         for name, model in best_models.items():
-#             st.write(f"**{name}:**")
-#             st.write(model)
-
-# if __name__ == "__main__":
-#     main()
