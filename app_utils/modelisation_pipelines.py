@@ -62,31 +62,31 @@ def train_and_predict(X, Y, models, kf, tune_hyperparameters=False):
         best_models[name] = best_pipeline
 
     # Autoencoder
-    scaler_autoencoder = StandardScaler()
-    X_scaled_autoencoder = scaler_autoencoder.fit_transform(X)
-    input_dim = X_scaled_autoencoder.shape[1]
+    # scaler_autoencoder = StandardScaler()
+    # X_scaled_autoencoder = scaler_autoencoder.fit_transform(X)
+    # input_dim = X_scaled_autoencoder.shape[1]
 
-    autoencoder = KerasRegressor(model=create_dense_autoencoder, input_dim=input_dim, verbose=0)
-    param_dist = {
-        'model__encoding_dim': [4, 8, 16, 32, 64],
-        'optimizer': ['adam', 'rmsprop'],
-        'epochs': [50, 100, 150],
-        'batch_size': [16, 32, 64]
-    }
+    # autoencoder = KerasRegressor(model=create_dense_autoencoder, input_dim=input_dim, verbose=0)
+    # param_dist = {
+    #     'model__encoding_dim': [4, 8, 16, 32, 64],
+    #     'optimizer': ['adam', 'rmsprop'],
+    #     'epochs': [50, 100, 150],
+    #     'batch_size': [16, 32, 64]
+    # }
 
-    if tune_hyperparameters:
-        random_search = RandomizedSearchCV(autoencoder, param_distributions=param_dist, n_iter=10, cv=kf, scoring='neg_mean_squared_error', n_jobs=-1)
-        random_search.fit(X_scaled_autoencoder, X_scaled_autoencoder)
-        best_autoencoder = random_search.best_estimator_
-    else:
-        best_autoencoder = autoencoder
-        best_autoencoder.fit(X_scaled_autoencoder, X_scaled_autoencoder)
+    # if tune_hyperparameters:
+    #     random_search = RandomizedSearchCV(autoencoder, param_distributions=param_dist, n_iter=10, cv=kf, scoring='neg_mean_squared_error', n_jobs=-1)
+    #     random_search.fit(X_scaled_autoencoder, X_scaled_autoencoder)
+    #     best_autoencoder = random_search.best_estimator_
+    # else:
+    #     best_autoencoder = autoencoder
+    #     best_autoencoder.fit(X_scaled_autoencoder, X_scaled_autoencoder)
     
-    reconstructed = best_autoencoder.predict(X_scaled_autoencoder)
-    reconstruction_errors = np.mean((X_scaled_autoencoder - reconstructed) ** 2, axis=1)
-    threshold = np.percentile(reconstruction_errors, 95)
-    y_pred_autoencoder = (reconstruction_errors > threshold).astype(int)
-    predictions_dict['Autoencoder'] = (y_pred_autoencoder, reconstruction_errors)
+    # reconstructed = best_autoencoder.predict(X_scaled_autoencoder)
+    # reconstruction_errors = np.mean((X_scaled_autoencoder - reconstructed) ** 2, axis=1)
+    # threshold = np.percentile(reconstruction_errors, 95)
+    # y_pred_autoencoder = (reconstruction_errors > threshold).astype(int)
+    # predictions_dict['Autoencoder'] = (y_pred_autoencoder, reconstruction_errors)
 
     return predictions_dict, best_models
 
