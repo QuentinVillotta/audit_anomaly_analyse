@@ -7,10 +7,13 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import precision_recall_curve, roc_curve, confusion_matrix, auc
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Input, Dense
+from tensorflow.keras.layers import Input, Dense, Dropout, Attention, Add, Lambda
 from scikeras.wrappers import KerasRegressor
 from sklearn.manifold import TSNE
-
+import tensorflow as tf
+from keras import backend as K
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.losses import mse
 
 
 def create_dense_autoencoder(input_dim, encoding_dim=8, optimizer="adam"):
@@ -24,6 +27,72 @@ def create_dense_autoencoder(input_dim, encoding_dim=8, optimizer="adam"):
     autoencoder = Model(inputs=input_layer, outputs=decoder)
     autoencoder.compile(optimizer=optimizer, loss='mean_squared_error')
     return autoencoder
+
+def gaussian_parametrisation(mu, log_var):
+    batch = tf.shape(mu)[0]
+    dim = tf.shape(mu)[1]
+    epsilon = tf.random.normal(shape=(batch, dim))
+    return mu + tf.exp(0.5 * log_var) * epsilon
+
+def VAE(input_dim, latent_space=2, hidden_dim=64, dropout=0.2, lr=10e-3):
+ 
+    if hidden_dim % 4 != 0:
+        raise ValueError("hidden_dim must be a multiple of 4")
+   
+    # Encoder
+    inputs = Input(shape=(input_dim,))
+    hidden_layer = Dense(hidden_dim, activation='relu')(inputs)
+    hidden_layer = Dropout(dropout)(hidden_layer)
+ 
+    # Attention mechanism (can reduce the dim)
+    query = Dense(hidden_dim, activation='relu')(hidden_layer)
+    key = Dense(hidden_dim, activation='relu')(hidden_layer)
+    value = Dense(hidden_dim, activation='relu')(hidden_layer)
+    attention = Attention()([query, key, value])
+    h = Add()([h, attention])
+ 
+    mu = Dense(latent_space)(hidden_layer)
+    log_var = Dense(latent_space)(hidden_layer)
+ 
+    # Gaussian bit
+    z = Lambda(gaussian_parametrisation, output_shape=(latent_space,), name='z')([mu, log_var])
+ 
+    # Encoder
+    encoder = Model(inputs, [mu, log_var, z], name='encoder')
+    encoder.summary()
+ 
+    # Decoder
+    latent_inputs = Input(shape=(latent_space,), name='z_sampling')
+    x = Dense(hidden_dim, activation='relu')(latent_inputs)
+    x = Dropout(dropout)(x)
+ 
+    # Attention
+    query = Dense(hidden_dim, activation='relu')(x)
+    key = Dense(hidden_dim, activation='relu')(x)
+    value = Dense(hidden_dim, activation='relu')(x)
+    attention2 = Attention()([query, key, value])
+    x = Add()([x, attention2])
+ 
+    outputs = Dense(input_dim, activation='sigmoid')(x)
+
+    # Decoder
+    decoder = Model(latent_inputs, outputs, name='decoder')
+    # Instantiate VAE model
+    outputs = decoder(encoder(inputs)[2])
+    vae = Model(inputs, outputs, name='vae')
+    # loss = reconstruction loss + KL divergence loss
+    rec_loss = mse(inputs, outputs)
+    rec_loss *= input_dim
+    kl_div_loss = tf.sqrt(K.sum(1 + log_var - K.square(mu) - K.exp(log_var)))
+    vae_loss = K.mean(kl_div_loss + rec_loss)
+    vae.add_loss(vae_loss)
+    vae.compile(optimizer=Adam(learning_rate=lr))
+    vae.summary()
+    return vae
+
+
+
+
 
 def train_and_predict(X, Y, models, kf, tune_hyperparameters=False):
     predictions_dict = {}
@@ -148,7 +217,7 @@ def plot_tsne(X, Y, predictions_dict):
             y='TSNE2',
             hue=model_name,
             style='Y',
-            markers={0: ',', 1: 'D'},
+            markers={0: ',', 1: 'X'},
             ax=ax,
             alpha=0.6,
             legend='brief'

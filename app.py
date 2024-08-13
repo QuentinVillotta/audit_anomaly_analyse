@@ -15,6 +15,7 @@ from sklearn.model_selection import KFold
 from app_utils import data_loading as dl
 from app_utils import plot_tools as pt
 from app_utils import modelisation_pipelines as mp
+from app_utils import data_comparaison as dc
 
 
 def set_clicked():
@@ -49,7 +50,7 @@ st.set_page_config(
 st.title("Anomaly Detection Features - Data Analysis")
 
 # Tabs for univariate and multivariate analysis
-tab1, tab2, tab3, tab4, tab5 = st.tabs(["Describe", "Univariate Analysis", "Multivariate Analysis", "Modelisation", "TSNE"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Describe", "Univariate Analysis", "Multivariate Analysis", "Modelisation", "TSNE", "Features Dataset Comparaison"])
 
 
 uploaded_file = st.sidebar.file_uploader("**Choose a file:**", type=ALLOWED_FILE_FORMATS, label_visibility="visible")
@@ -216,10 +217,10 @@ if uploaded_file is not None:
 
         with tab5:
             st.header("Dimension Reduction by TSNE",  divider='rainbow')
-            tab4_col1, tab4_col2 = st.columns([5, 1])
+            tab5_col1, tab5_col2 = st.columns([5, 1])
             TSNE_TARGET_VAR = None
 
-            with tab4_col1:
+            with tab5_col1:
                 TSNE_FEATURES = st.multiselect("**Select features you want to add in TSNE:**", df_filtered.columns)
                 if TSNE_FEATURES:
                     TSNE_TARGET_VAR = st.selectbox("**Select target variable:**", df_filtered.columns, index=None)
@@ -246,8 +247,80 @@ if uploaded_file is not None:
                     g_tsne = sns.scatterplot(x='TSNE1', y='TSNE2', hue=TSNE_TARGET_VAR, palette='viridis', data=df_tsne)
                     st.pyplot(g_tsne.get_figure())
 
-            with tab4_col2:
+            with tab5_col2:
                 if TSNE_TARGET_VAR is not None and TSNE_FEATURES:
                     # Placeholder for download button
                     buf_TSNE= pt.save_plot_as_png(g_tsne.get_figure(), format=IMAGE_FORMAT, dpi=1000)
                     st.download_button(label="Download TSNE Plot", data=buf_TSNE, file_name="TSNE_plot.{}".format(IMAGE_FORMAT), mime="image/{}".format(IMAGE_FORMAT))
+else:      
+    with tab6:
+        st.header("Data Comparison")
+
+        st.markdown("""
+        1. Upload multiple datasets (they should have the same indicators).
+        2. Descriptive statistics (mean, standard deviation, etc.) will be calculated for each dataset.
+        3. You can compare the differences between the datasets.
+        """)
+
+         # Initialize session state if not already present
+        if 'datasets' not in st.session_state:
+            st.session_state.datasets = {}
+    
+        # Upload CSV files
+        uploaded_files = st.file_uploader("Upload your CSV files", accept_multiple_files=True,
+                                          type=ALLOWED_FILE_FORMATS, label_visibility="visible")
+        
+        if uploaded_files:
+
+            # Read files and store DataFrames
+            st.session_state.datasets = {file.name: dl.data_loader(file) for file in uploaded_files}
+            st.markdown("### Normalize Data")
+            standard_scaler_on = st.checkbox("Apply Standard Scaler to Numeric Variables", value=False)
+
+            # Apply standard scaling if button is pressed
+            if standard_scaler_on:
+                st.session_state.datasets, problematic_columns = dc.apply_standard_scaler(st.session_state.datasets)
+                # Display warning messages for columns that were excluded
+                if problematic_columns:
+                    for dataset_name, cols in problematic_columns.items():
+                        st.warning(f"In dataset '{dataset_name}', the following columns were excluded from scaling due to containing infinity or very large values: {', '.join(cols)}")
+                
+                st.success("Standard Scaling applied to all datasets.")
+
+            # Calculate and display statistics for each dataset
+            if st.session_state.datasets:
+                stats_list = [(name, dc.calculate_statistics(df)) for name, df in st.session_state.datasets.items()]
+            
+            # Compare statistics across datasets
+            if len(stats_list) > 1:
+                st.markdown("## Comparison Distribution Plot")
+                # Comparaison distribution plot
+                all_numeric_cols = set(col for df in st.session_state.datasets.values() for col in df.select_dtypes(include=['number']).columns)
+                selected_indicator = st.selectbox("Select an indicator to compare distributions:", options=all_numeric_cols)
+                
+                if selected_indicator:
+                    dc.plot_distributions(st.session_state.datasets, selected_indicator)
+
+                st.markdown("## Statistics Comparison")
+                comparison = pd.concat([stats for _, stats in stats_list], keys=[name for name, _ in stats_list], names=['Dataset', 'Indicator'])
+                comparison = comparison.sort_values(by=['Indicator'])
+                st.write(comparison)
+
+                # Display differences between the datasets
+                st.markdown("## Differences Between Datasets")
+                df_agg_comparaison = pd.DataFrame()
+                for col in comparison.columns:
+                    if col not in ['count']:
+                        diff = comparison[col].groupby('Indicator').apply(lambda x: x.max() - x.min())
+                        df_agg_comparaison[ col + " difference"] = diff
+                st.write(df_agg_comparaison)
+            else:
+                st.markdown("## Statistics Dataset")
+                # Calculate and display statistics for each dataset
+                for name, stats in stats_list:
+                    st.write(f"**Dataset: {name}:**")
+                    st.write(stats)
+        
+
+
+
