@@ -11,3 +11,4 @@ xgboost
 tensorflow
 scikeras
 keras
+shap
