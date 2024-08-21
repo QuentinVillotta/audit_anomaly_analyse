@@ -5,16 +5,14 @@ import matplotlib.pyplot as plt
 from itertools import combinations
 from sklearn.manifold import TSNE
 from sklearn.preprocessing import StandardScaler
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.svm import LinearSVC, OneClassSVM
-from xgboost import XGBClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble import RandomForestClassifier, IsolationForest
+from sklearn.ensemble import IsolationForest
+from sklearn.svm import OneClassSVM
+from sklearn.neighbors import LocalOutlierFactor
 from sklearn.model_selection import KFold
 # Intern module
 from app_utils import data_loading as dl
 from app_utils import plot_tools as pt
-from app_utils import modelisation_pipelines as mp
+from app_utils import modelisation_interpretation as mi
 from app_utils import data_comparaison as dc
 
 
@@ -30,14 +28,20 @@ THRESHOLD_QUANTITATIVE_TYPE = 20
 # Modelisation parameters
 
 models = {
-    'KNN': (KNeighborsClassifier(), {'classifier__n_neighbors': [3, 5, 7, 9, 11], 'classifier__weights': ['uniform', 'distance'], 'classifier__metric': ['euclidean', 'manhattan']}),
-    'Linear SVM': (LinearSVC(dual=False), {'classifier__C': [0.01, 0.1, 1, 10, 100], 'classifier__loss': ['hinge', 'squared_hinge']}),
-    'XGBoost': (XGBClassifier(use_label_encoder=False, eval_metric='logloss'), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_depth': [3, 5, 7], 'classifier__learning_rate': [0, 0.01, 0.1, 0.2]}),
-    'Decision Tree': (DecisionTreeClassifier(), {'classifier__max_depth': [None, 10, 20, 30], 'classifier__min_samples_split': [2, 5, 10]}),
-    'Random Forest': (RandomForestClassifier(), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_depth': [None, 10, 20], 'classifier__min_samples_split': [2, 5, 10]}),
-    'Isolation Forest': (IsolationForest(contamination=0.1, random_state=42), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_samples': ['auto', 0.5, 0.75]}),
-    'One Class SVM': (OneClassSVM(nu=0.1, kernel='rbf'), {'classifier__gamma': ['scale', 'auto'], 'classifier__nu': [0.05, 0.1, 0.2]}),
+    'IsolationForest': (IsolationForest(contamination=0.1, random_state=42), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_samples': ['auto', 0.5, 0.75]}),
+    'OneClassSVM': (OneClassSVM(nu=0.1, kernel='rbf'), {'classifier__gamma': ['scale', 'auto'], 'classifier__nu': [0.05, 0.1, 0.2]}),
+    'LOF': (LocalOutlierFactor(n_neighbors=20, novelty=True), {'classifier__n_neighbors': [5, 10, 20, 30],'classifier__metric': ['euclidean', 'manhattan']})  
 }
+
+# models = {
+#     'KNN': (KNeighborsClassifier(), {'classifier__n_neighbors': [3, 5, 7, 9, 11], 'classifier__weights': ['uniform', 'distance'], 'classifier__metric': ['euclidean', 'manhattan']}),
+#     'Linear SVM': (LinearSVC(dual=False), {'classifier__C': [0.01, 0.1, 1, 10, 100], 'classifier__loss': ['hinge', 'squared_hinge']}),
+#     'XGBoost': (XGBClassifier(use_label_encoder=False, eval_metric='logloss'), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_depth': [3, 5, 7], 'classifier__learning_rate': [0, 0.01, 0.1, 0.2]}),
+#     'Decision Tree': (DecisionTreeClassifier(), {'classifier__max_depth': [None, 10, 20, 30], 'classifier__min_samples_split': [2, 5, 10]}),
+#     'Random Forest': (RandomForestClassifier(), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_depth': [None, 10, 20], 'classifier__min_samples_split': [2, 5, 10]}),
+#     'Isolation Forest': (IsolationForest(contamination=0.1, random_state=42), {'classifier__n_estimators': [50, 100, 200, 300], 'classifier__max_samples': ['auto', 0.5, 0.75]}),
+#     'One Class SVM': (OneClassSVM(nu=0.1, kernel='rbf'), {'classifier__gamma': ['scale', 'auto'], 'classifier__nu': [0.05, 0.1, 0.2]}),
+# }
 
 kf = KFold(n_splits=5, shuffle=True, random_state=42)
 
@@ -50,7 +54,7 @@ st.set_page_config(
 st.title("Anomaly Detection Features - Data Analysis")
 
 # Tabs for univariate and multivariate analysis
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Describe", "Univariate Analysis", "Multivariate Analysis", "Modelisation", "TSNE", "Features Dataset Comparaison"])
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Describe", "Univariate Analysis", "Multivariate Analysis", "Modelisation & Interpretation", "TSNE", "Features Dataset Comparaison"])
 
 
 uploaded_file = st.sidebar.file_uploader("**Choose a file:**", type=ALLOWED_FILE_FORMATS, label_visibility="visible")
@@ -186,34 +190,24 @@ if uploaded_file is not None:
 
 
         with tab4:
-            st.title("Model Training and Visualization")
+            st.title("Model Training and SHAP interpretation")
+            # Model selection
+            model_name = st.selectbox('Choose the anomaly detection model', ['IsolationForest', 'OneClassSVM', 'LOF'], index = None)
+
             # Select variables for bivariate analysis
             list_X_var = st.multiselect("**Select features:**", df_filtered.columns, key= "X_model")
-            Y_var = st.selectbox("Select Y:", df_filtered.columns, key="Y_model", index = None)
+            survey_id_var = st.sidebar.selectbox("**Choose Survey ID variable name  (if not available select 'None'):**", df_filtered.columns, index = None)
 
-     
-            st.sidebar.title("Settings")
-            tune_hyperparameters = st.sidebar.checkbox("Tune Hyperparameters", value=False)
-            
             if st.sidebar.button("Train Models"):
                 st.write("Training models... This may take a few minutes.")
-                if list_X_var is not None and Y_var is not None:
+                if list_X_var is not None and model_name is not None:
                     X = df_filtered[list_X_var]
-                    Y = df_filtered[Y_var]
-                    predictions_dict, best_models = mp.train_and_predict(X, Y, models, kf, tune_hyperparameters)
+                    if survey_id_var is not None:
+                        X[survey_id_var] = df_filtered[survey_id_var]
+                    model, data = mi.train_and_predict(model_name=model_name, data=X, survey_id_var=survey_id_var)
 
-                    st.write("### Model Evaluation Metrics")
-                    evaluation_fig = mp.plot_evaluation_metrics(predictions_dict, Y)
-                    st.pyplot(evaluation_fig)
-
-                    st.write("### T-SNE Visualization")
-                    tsne_fig = mp.plot_tsne(X, Y, predictions_dict)
-                    st.pyplot(tsne_fig)
-
-                    st.write("### Best Models")
-                    for name, model in best_models.items():
-                        st.write(f"**{name}:**")
-                        st.write(model)
+                    st.write("## SHAP Interpretation")
+                    mi.plot_shap(model_name=model_name, model=model , data=data, survey_id_var=survey_id_var)
 
         with tab5:
             st.header("Dimension Reduction by TSNE",  divider='rainbow')
