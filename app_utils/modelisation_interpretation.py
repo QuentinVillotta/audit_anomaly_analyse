@@ -26,6 +26,7 @@ import streamlit.components.v1 as components
 ##################################################################################################################
 
 # Function to train the model and make predictions
+@st.cache_resource
 def train_and_predict(model_name, data, survey_id_var=None):
 
     if model_name == 'IsolationForest':
@@ -45,50 +46,63 @@ def train_and_predict(model_name, data, survey_id_var=None):
     # Fit and predict
     data = data.copy()
     model.fit(data)
-    data['anomaly'] = model.predict(data)
+    prediction = model.predict(data)
+    score =  model.decision_function(data)
+    data['anomaly'] = prediction
     data['anomaly'] = (data['anomaly']  == -1).astype(int)
+    data['model_score'] = score
     if survey_id_var is not None:
         data[survey_id_var] = survey_id_col_copy
     return model, data
 
-    
 def st_shap(plot, height=None):
     shap_html = f"<head>{shap.getjs()}</head><body>{plot.html()}</body>"
     components.html(shap_html, height=height)
 
 # Function to plot SHAP visualizations
-def plot_shap(model_name, model, data, survey_id_var=None):
+
+@st.cache_resource
+def train_shap_explainer(model_name, _model, data, survey_id_var=None):
     if survey_id_var is not None:
-        survey_id = data[survey_id_var]
-        X = data.drop(columns = ['anomaly', survey_id_var])
+        X = data.drop(columns = ['anomaly', 'model_score', survey_id_var])
     else:
-        X = data.drop(columns = ['anomaly'])
+        X = data.drop(columns = ['anomaly', 'model_score'])
 
     if model_name in ['LOF', 'OneClassSVM']:
         st.write(model_name + " model slected, SHAP computations values may take a few minutes (KernelExplainer)")
-        explainer = shap.KernelExplainer(model.decision_function, X, link="identity", feature_names=X.columns.tolist())
+        explainer = shap.KernelExplainer(_model.decision_function, X, link="identity", feature_names=X.columns.tolist())
     else: 
-        explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X)
+        explainer = shap.TreeExplainer(_model, X)
+    shap_values = explainer(X)
+    # Train clustering for features correlation
+    clustering = shap.utils.hclust(X)
+    return explainer, shap_values, X, clustering
 
-    # Global interpretation
-    st.subheader("Global Interpretation")
-    f1= shap.summary_plot(shap_values, X)
-    st.pyplot(f1)
 
-    # Local interpretation
-    if survey_id_var is not None:
-        st.subheader("Local Interpretation")
-        selected_survey = st.selectbox("Select an instance", survey_id)
-        print(selected_survey)
-        index_survey= data[data[survey_id_var] == selected_survey].index[0]
-        print(index_survey)
-        shap_index_survey = data.index.get_loc(index_survey)
-        print(shap_index_survey)
-        # shap.initjs()
-        f2 = shap.force_plot(explainer.expected_value, shap_values[shap_index_survey], X.iloc[shap_index_survey])
-        # st.pyplot(f2,matplotlib=True)
-        st_shap(f2)
+@st.experimental_fragment
+def id_survey_shap_force_plot(survey_id_var, selected_survey, data, shap_values ) -> None:
+   
+    index_survey= data[data[survey_id_var] == selected_survey].index[0]
+    shap_index_survey = data.index.get_loc(index_survey)
+    fp_plot = shap.force_plot(shap_values[shap_index_survey])
+    st_shap(fp_plot)
+
+@st.experimental_fragment
+def id_survey_shap_bar_plot(survey_id_var, selected_survey, data, shap_values, clustering, clustering_cutoff=0.5) -> None:
+   
+    nb_features = shap_values.data.shape[1]
+    index_survey= data[data[survey_id_var] == selected_survey].index[0]
+    shap_index_survey = data.index.get_loc(index_survey)
+    local_bar_plot = shap.plots.bar(shap_values[shap_index_survey],  clustering=clustering, clustering_cutoff=clustering_cutoff,  max_display=nb_features)
+    st.pyplot(local_bar_plot)
+
+@st.experimental_fragment
+def shap_dependence_plot(shap_dependence_feature, shap_dependence_color_feature, shap_values) -> None:
+    if shap_dependence_color_feature is None:
+        dp_plot = shap.plots.scatter(shap_values[:, shap_dependence_feature], color=shap_values)
+    else:
+        dp_plot = shap.plots.scatter(shap_values[:, shap_dependence_feature], color=shap_values[:, shap_dependence_color_feature])
+    st.pyplot(dp_plot)
 
 
 ##################################################################################################################

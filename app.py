@@ -9,12 +9,16 @@ from sklearn.ensemble import IsolationForest
 from sklearn.svm import OneClassSVM
 from sklearn.neighbors import LocalOutlierFactor
 from sklearn.model_selection import KFold
+import pickle
+import shap
 # Intern module
 from app_utils import data_loading as dl
 from app_utils import plot_tools as pt
 from app_utils import modelisation_interpretation as mi
 from app_utils import data_comparaison as dc
 
+if 'model_trained' not in st.session_state:
+    st.session_state.model_trained = False
 
 def set_clicked():
     st.session_state.clicked = True
@@ -54,7 +58,7 @@ st.set_page_config(
 st.title("Anomaly Detection Features - Data Analysis")
 
 # Tabs for univariate and multivariate analysis
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Describe", "Univariate Analysis", "Multivariate Analysis", "Modelisation & Interpretation", "TSNE", "Features Dataset Comparaison"])
+tab1, tab2, tab3, tab4, tab5, tab6 , tab7 = st.tabs(["Describe", "Univariate Analysis", "Multivariate Analysis", "Modelisation & Interpretation", "TSNE", "Features Dataset Comparaison", "Dev"])
 
 
 uploaded_file = st.sidebar.file_uploader("**Choose a file:**", type=ALLOWED_FILE_FORMATS, label_visibility="visible")
@@ -108,6 +112,14 @@ if uploaded_file is not None:
                                                   ax=ax_hist)
                             # Remove x axis name for the boxplot
                             ax_box.set(xlabel='')
+
+                        elif variable_types[variable] == 'non-numeric':  # New case for non-numeric variables
+                            # Count plot for non-numeric variables
+                            g_hist = sns.countplot(data=df_filtered, x=variable, hue=HUE_VAR, ax=ax_hist)
+                            ax_hist.set_xticklabels(ax_hist.get_xticklabels(), rotation=90)
+                            # Set title and remove boxplot since it doesn't make sense for non-numeric
+                            # ax_hist.set_title(f"Count plot of {variable}")
+                            ax_box.axis('off')  # Hide the boxplot
                         else:
                             # Histogram
                             g_bp = sns.boxplot(data = df_filtered, x = variable, hue=HUE_VAR,
@@ -190,25 +202,168 @@ if uploaded_file is not None:
 
 
         with tab4:
+
             st.title("Model Training and SHAP interpretation")
-            # Model selection
-            model_name = st.selectbox('Choose the anomaly detection model', ['IsolationForest', 'OneClassSVM', 'LOF'], index = None)
 
-            # Select variables for bivariate analysis
-            list_X_var = st.multiselect("**Select features:**", df_filtered.columns, key= "X_model")
-            survey_id_var = st.sidebar.selectbox("**Choose Survey ID variable name  (if not available select 'None'):**", df_filtered.columns, index = None)
+            # Choisir entre l'entraînement d'un modèle ou le chargement depuis un fichier pickle
+            mode = st.radio("Modelisation option:", ["Train a new model", "Load modelisation from file"])
+            if mode == "Load modelisation from file":
+                # Option pour charger un modèle et un explainer déjà calculé depuis un fichier pickle
+                uploaded_modelisation = st.file_uploader("Upload your saved modelisation", type="pkl")
 
-            if st.sidebar.button("Train Models"):
-                st.write("Training models... This may take a few minutes.")
-                if list_X_var is not None and model_name is not None:
-                    X = df_filtered[list_X_var]
-                    if survey_id_var is not None:
-                        X[survey_id_var] = df_filtered[survey_id_var]
-                    model, data = mi.train_and_predict(model_name=model_name, data=X, survey_id_var=survey_id_var)
+                if uploaded_modelisation is not None:
+                    loaded_modelisation = pickle.load(uploaded_modelisation)
 
+                    with st.expander("Model Parameters"):
+                        model_name = st.selectbox('Models availables', loaded_modelisation.keys(), index = None)
+                        if model_name is not None: 
+                            modelisation_selected = loaded_modelisation[model_name]
+                            model = modelisation_selected['model']
+                            explainer = modelisation_selected['explainer']
+                            shap_values = modelisation_selected['shap_values']
+
+                            features = modelisation_selected['features']
+                            survey_id_var = 'audit_id'
+                            shap_data = features.drop(survey_id_var, axis=1)
+                            clustering = shap.utils.hclust(shap_data)
+                            # Get prediction and score
+                            y_pred = model.predict(shap_data)
+                            features['anomaly'] = (y_pred == -1).astype(int)
+                            features['model_score'] = model.decision_function(shap_data)
+                                                
+                            # Select variables for bivariate analysis
+                            st.write('Features used for modeling:')
+                            st.write(shap_data.columns.tolist())
+            
+
+                if uploaded_modelisation is not None and model_name is not None:
+                    # Continuer avec l'interprétation SHAP comme d'habitude
                     st.write("## SHAP Interpretation")
-                    mi.plot_shap(model_name=model_name, model=model , data=data, survey_id_var=survey_id_var)
+                    sub_tab1, sub_tab2 = st.tabs(["Global Interpretation", "Local Interpretation"])
 
+                    with sub_tab1:
+                        sub_sub1_tab1, sub_sub1_tab2, sub_sub1_tab3 = st.tabs(["SHAP Feature Importance", "SHAP Summary Plot", "SHAP Dependence Plot"])
+                        with sub_sub1_tab1:
+                            nb_features = len(shap_data.columns)
+                            fi_plot = shap.plots.bar(shap_values, clustering=clustering, max_display=nb_features)
+                            st.pyplot(fi_plot)
+                        with sub_sub1_tab2:
+                            sp_plot = shap.summary_plot(shap_values, shap_data)
+                            st.pyplot(sp_plot)
+                        with sub_sub1_tab3:
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                shap_dependence_feature = st.selectbox('Choose Feature', shap_data.columns, index=None)
+                            with col2:
+                                shap_dependence_color_feature = st.selectbox('Choose Interaction Feature (color)', shap_data.columns, index=None)
+                            if shap_dependence_feature is not None:
+                                mi.shap_dependence_plot(shap_dependence_feature, shap_dependence_color_feature, shap_values)
+
+                    with sub_tab2:
+                        # Sélection du survey pour l'interprétation locale
+                        survey_id = features[survey_id_var]
+                        selected_survey = st.selectbox("Select an survey ID", survey_id)
+
+                        if survey_id_var is not None:
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.subheader("Model prediction")
+                                st.write(features.loc[features[survey_id_var] == selected_survey, 'anomaly'])
+                            with col2:
+                                st.subheader("Model Score")
+                                st.write(features.loc[features[survey_id_var] == selected_survey, 'model_score'])
+
+                            sub_sub2_tab1, sub_sub2_tab2 = st.tabs(["SHAP Feature Importance", "SHAP Force Plot"])
+                            with sub_sub2_tab1:
+                                mi.id_survey_shap_bar_plot(survey_id_var, 
+                                                           selected_survey, 
+                                                           features, 
+                                                           shap_values, 
+                                                           clustering, 
+                                                           clustering_cutoff=0.5)
+                            with sub_sub2_tab2:
+                                mi.id_survey_shap_force_plot(survey_id_var=survey_id_var, 
+                                                             selected_survey=selected_survey, 
+                                                             data=features,
+                                                             shap_values=shap_values)
+
+           
+            elif mode == "Train a new model": 
+                # Model selection
+                with st.expander("Model Parameters"):
+                    model_name = st.selectbox('Choose the anomaly detection model', ['IsolationForest', 'OneClassSVM', 'LOF'], index = None)
+                    # Select variables for bivariate analysis
+                    list_X_var = st.multiselect("**Select features:**", df_filtered.columns, key= "X_model")
+                    survey_id_var = st.selectbox("**Choose Survey ID variable name  (if not available select 'None'):**", df_filtered.columns, index = None)
+                    train_model_btn = st.button("Train Model", key="train_model")
+                    
+                if train_model_btn or st.session_state.model_trained:
+                    st.write("Training models... This may take a few minutes.")
+                    if list_X_var is not None and model_name is not None:
+                        X = df_filtered[list_X_var]
+                        if survey_id_var is not None:
+                            X[survey_id_var] = df_filtered[survey_id_var]
+                        # Train model and SHAP explainer
+                        model, data = mi.train_and_predict(model_name=model_name, data=X, survey_id_var=survey_id_var)
+                        print("Nombre de fois ou le modèle et les shap sont recalculer")
+            
+                        explainer, shap_values, shap_data, clustering = mi.train_shap_explainer(model_name=model_name, _model=model , data=data, survey_id_var=survey_id_var)
+                        
+                        # model, data = train_model(model_name, X, survey_id_var)
+                        # explainer, shap_values, shap_data = train_shap_explainer(model_name, model, data, survey_id_var)
+
+                        
+                        st.write("## SHAP Interpretation")
+                        sub_tab1, sub_tab2 = st.tabs(["Global Interpretation",  "Local Interpretation"])
+                        with sub_tab1:
+                            sub_sub1_tab1, sub_sub1_tab2, sub_sub1_tab3 = st.tabs(["SHAP Feature Importance",  "SHAP Summary Plot", "SHAP Dependence Plot"])
+                            with sub_sub1_tab1:
+                                nb_features = len(shap_data.columns)
+                                print(nb_features)
+                                print(shap_values)
+                                fi_plot = shap.plots.bar(shap_values, clustering=clustering,  max_display=nb_features)
+                                st.pyplot(fi_plot)
+                            with sub_sub1_tab2:
+                                sp_plot = shap.summary_plot(shap_values, shap_data)
+                                st.pyplot(sp_plot)
+                            with sub_sub1_tab3:
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    shap_dependence_feature = st.selectbox('Choose Feature', shap_data.columns, index = None)
+                                with col2:
+                                    shap_dependence_color_feature = st.selectbox('Choose Interaction Feature (color)', shap_data.columns, index = None)
+                                if shap_dependence_feature is not None:
+                                    mi.shap_dependence_plot(shap_dependence_feature, shap_dependence_color_feature, shap_values)
+
+                        with sub_tab2:
+                            # Selectbox survey
+                            survey_id = data[survey_id_var]
+                            selected_survey = st.selectbox("Select an survey ID", survey_id)
+                            # Local interpretation
+                            if survey_id_var is not None:
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.subheader("Model prediction")
+                                    data.loc[data["audit_id"] == selected_survey , 'anomaly']
+                                with col2:
+                                    st.subheader("Model Score")
+                                    data.loc[data["audit_id"] == selected_survey , 'model_score']
+                                # Sub tab - 
+                                sub_sub2_tab1, sub_sub2_tab2 = st.tabs(["SHAP Feature Importance",  "SHAP Force Plot"])
+                                with sub_sub2_tab1:
+                                    mi.id_survey_shap_bar_plot(survey_id_var,
+                                                               selected_survey,
+                                                                data,
+                                                                shap_values, 
+                                                                clustering, 
+                                                                clustering_cutoff=0.5)
+                                with sub_sub2_tab2:
+                                    mi.id_survey_shap_force_plot(survey_id_var=survey_id_var,
+                                                                 selected_survey=selected_survey, 
+                                                                 data=data,
+                                                                 shap_values=shap_values)
+                            
+                        st.session_state.model_trained = True
         with tab5:
             st.header("Dimension Reduction by TSNE",  divider='rainbow')
             tab5_col1, tab5_col2 = st.columns([5, 1])
@@ -314,7 +469,24 @@ else:
                 for name, stats in stats_list:
                     st.write(f"**Dataset: {name}:**")
                     st.write(stats)
+# TAB DEV 
+    with tab7:
+        sub_tab1, sub_tab2 = st.tabs(["Sub TAB 1",  "SUB Tab 2"])
+        with sub_tab1:
+            st.header("SUB TAB 1")
+        with sub_tab2:
+            st.header("SUB TAB 2")
+
+        # with st.expander("Sous-Onglet 1"):
+        #         st.write("Contenu du Sous-Onglet 1")
+
+        # with st.expander("Sous-Onglet 2"):
+        #         st.write("Contenu du Sous-Onglet 2")
+
+        # sous_tab = st.radio("Sélectionnez un Sous-Onglet", ["Sous-Onglet 1", "Sous-Onglet 2"])
+
+        # if sous_tab == "Sous-Onglet 1":
+        #     st.write("Contenu du Sous-Onglet 1")
+        # elif sous_tab == "Sous-Onglet 2":
+        #     st.write("Contenu du Sous-Onglet 2")
         
-
-
-
