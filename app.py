@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from itertools import combinations
@@ -222,6 +223,15 @@ if uploaded_file is not None:
                             explainer = modelisation_selected['explainer']
                             shap_values = modelisation_selected['shap_values']
 
+                            # Reorder by features
+                            shap_values_array = np.array(shap_values.values)
+                            feature_names = np.array(shap_values.feature_names)
+                            sorted_indices = np.argsort(feature_names)
+        
+                            # Mettre à jour les valeurs et noms dans shap_values en fonction du tri
+                            shap_values.feature_names = feature_names[sorted_indices].tolist()
+                            shap_values.values = shap_values_array[:, sorted_indices]
+
                             features = modelisation_selected['features']
                             survey_id_var = 'audit_id'
                             shap_data = features.drop(survey_id_var, axis=1)
@@ -245,7 +255,9 @@ if uploaded_file is not None:
                         sub_sub1_tab1, sub_sub1_tab2, sub_sub1_tab3 = st.tabs(["SHAP Feature Importance", "SHAP Summary Plot", "SHAP Dependence Plot"])
                         with sub_sub1_tab1:
                             nb_features = len(shap_data.columns)
-                            fi_plot = shap.plots.bar(shap_values, clustering=clustering, max_display=nb_features)
+
+                            fi_plot = shap.plots.bar(shap_values, clustering=clustering, max_display=nb_features,
+                                                     order=shap_values.feature_names)
                             st.pyplot(fi_plot)
                         with sub_sub1_tab2:
                             sp_plot = shap.summary_plot(shap_values, shap_data)
@@ -305,23 +317,26 @@ if uploaded_file is not None:
                             X[survey_id_var] = df_filtered[survey_id_var]
                         # Train model and SHAP explainer
                         model, data = mi.train_and_predict(model_name=model_name, data=X, survey_id_var=survey_id_var)
-                        print("Nombre de fois ou le modèle et les shap sont recalculer")
-            
                         explainer, shap_values, shap_data, clustering = mi.train_shap_explainer(model_name=model_name, _model=model , data=data, survey_id_var=survey_id_var)
-                        
-                        # model, data = train_model(model_name, X, survey_id_var)
-                        # explainer, shap_values, shap_data = train_shap_explainer(model_name, model, data, survey_id_var)
+                       
+                        # Reorder by features
+                        shap_values_array = np.array(shap_values.values)
+                        feature_names = np.array(shap_values.feature_names)
+                        sorted_indices = np.argsort(feature_names)
+    
+                        # Mettre à jour les valeurs et noms dans shap_values en fonction du tri
+                        shap_values.feature_names = feature_names[sorted_indices].tolist()
+                        shap_values.values = shap_values_array[:, sorted_indices]
 
-                        
                         st.write("## SHAP Interpretation")
                         sub_tab1, sub_tab2 = st.tabs(["Global Interpretation",  "Local Interpretation"])
                         with sub_tab1:
                             sub_sub1_tab1, sub_sub1_tab2, sub_sub1_tab3 = st.tabs(["SHAP Feature Importance",  "SHAP Summary Plot", "SHAP Dependence Plot"])
                             with sub_sub1_tab1:
                                 nb_features = len(shap_data.columns)
-                                print(nb_features)
-                                print(shap_values)
-                                fi_plot = shap.plots.bar(shap_values, clustering=clustering,  max_display=nb_features)
+                      
+                                fi_plot = shap.plots.bar(shap_values, clustering=clustering,  max_display=nb_features,
+                                                         order=shap_values.feature_names)
                                 st.pyplot(fi_plot)
                             with sub_sub1_tab2:
                                 sp_plot = shap.summary_plot(shap_values, shap_data)

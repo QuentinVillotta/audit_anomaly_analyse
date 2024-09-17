@@ -70,7 +70,8 @@ def train_shap_explainer(model_name, _model, data, survey_id_var=None):
 
     if model_name in ['LOF', 'OneClassSVM']:
         st.write(model_name + " model slected, SHAP computations values may take a few minutes (KernelExplainer)")
-        explainer = shap.KernelExplainer(_model.decision_function, X, link="identity", feature_names=X.columns.tolist())
+        X_kmeans = shap.kmeans(X, 10)
+        explainer = shap.KernelExplainer(_model.decision_function, X_kmeans, link="identity", feature_names=X.columns.tolist())
     else: 
         explainer = shap.TreeExplainer(_model, X)
     shap_values = explainer(X)
