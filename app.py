@@ -12,6 +12,7 @@ from sklearn.neighbors import LocalOutlierFactor
 from sklearn.model_selection import KFold
 import pickle
 import shap
+from io import BytesIO
 # Intern module
 from app_utils import data_loading as dl
 from app_utils import plot_tools as pt
@@ -223,15 +224,6 @@ if uploaded_file is not None:
                             explainer = modelisation_selected['explainer']
                             shap_values = modelisation_selected['shap_values']
 
-                            # Reorder by features
-                            shap_values_array = np.array(shap_values.values)
-                            feature_names = np.array(shap_values.feature_names)
-                            sorted_indices = np.argsort(feature_names)
-        
-                            # Mettre à jour les valeurs et noms dans shap_values en fonction du tri
-                            shap_values.feature_names = feature_names[sorted_indices].tolist()
-                            shap_values.values = shap_values_array[:, sorted_indices]
-
                             features = modelisation_selected['features']
                             survey_id_var = 'audit_id'
                             shap_data = features.drop(survey_id_var, axis=1)
@@ -241,9 +233,19 @@ if uploaded_file is not None:
                             features['anomaly'] = (y_pred == -1).astype(int)
                             features['model_score'] = model.decision_function(shap_data)
                                                 
+
+                            # # Reorder by features
+                            # shap_values_array = np.array(shap_values.values)
+                            # feature_names = np.array(shap_values.feature_names)
+                            # sorted_indices = np.argsort(feature_names)
+        
+                            # # Mettre à jour les valeurs et noms dans shap_values en fonction du tri
+                            # shap_values.feature_names = feature_names[sorted_indices].tolist()
+                            # shap_values.values = shap_values_array[:, sorted_indices]
+
                             # Select variables for bivariate analysis
                             st.write('Features used for modeling:')
-                            st.write(shap_data.columns.tolist())
+                            st.write(shap_values.feature_names)
             
 
                 if uploaded_modelisation is not None and model_name is not None:
@@ -256,9 +258,18 @@ if uploaded_file is not None:
                         with sub_sub1_tab1:
                             nb_features = len(shap_data.columns)
 
-                            fi_plot = shap.plots.bar(shap_values, clustering=clustering, max_display=nb_features,
+                            # fig, ax = plt.subplots()
+                            fig_fi = shap.plots.bar(shap_values, max_display=nb_features, clustering=clustering,
                                                      order=shap_values.feature_names)
-                            st.pyplot(fi_plot)
+                            st.pyplot(fig_fi)
+
+                            # Save plot memory
+                            # buf = pt.save_plot_as_png(fig, format=IMAGE_FORMAT, dpi=1000)
+                            # st.download_button(label="Download Plot",
+                            #                     data=buf,
+                            #                     file_name="SHAP_Feature_Importance_plot.{}".format(IMAGE_FORMAT),
+                            #                       mime="image/{}".format(IMAGE_FORMAT))
+
                         with sub_sub1_tab2:
                             sp_plot = shap.summary_plot(shap_values, shap_data)
                             st.pyplot(sp_plot)
@@ -320,13 +331,13 @@ if uploaded_file is not None:
                         explainer, shap_values, shap_data, clustering = mi.train_shap_explainer(model_name=model_name, _model=model , data=data, survey_id_var=survey_id_var)
                        
                         # Reorder by features
-                        shap_values_array = np.array(shap_values.values)
-                        feature_names = np.array(shap_values.feature_names)
-                        sorted_indices = np.argsort(feature_names)
+                        # shap_values_array = np.array(shap_values.values)
+                        # feature_names = np.array(shap_values.feature_names)
+                        # sorted_indices = np.argsort(feature_names)
     
-                        # Mettre à jour les valeurs et noms dans shap_values en fonction du tri
-                        shap_values.feature_names = feature_names[sorted_indices].tolist()
-                        shap_values.values = shap_values_array[:, sorted_indices]
+                        # # Mettre à jour les valeurs et noms dans shap_values en fonction du tri
+                        # shap_values.feature_names = feature_names[sorted_indices].tolist()
+                        # shap_values.values = shap_values_array[:, sorted_indices]
 
                         st.write("## SHAP Interpretation")
                         sub_tab1, sub_tab2 = st.tabs(["Global Interpretation",  "Local Interpretation"])
